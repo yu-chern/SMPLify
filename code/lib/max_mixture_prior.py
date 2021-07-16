@@ -90,12 +90,16 @@ class MaxMixtureCompletePrior(object):
     def create_prior_from_cmu(self):
         """Load the gmm from the CMU motion database."""
         from os.path import dirname
-        import cPickle as pickle
+        import pickle
         with open(
                 os.path.join(
                     dirname(dirname(__file__)), 'models', 'gmm_%02d.pkl' %
-                    self.n_gaussians)) as f:
-            gmm = pickle.load(f)
+                    self.n_gaussians),'rb') as f:
+            #gmm = pickle.load(f)
+            unpickler = pickle._Unpickler(f)
+            unpickler.encoding = 'latin1'
+            gmm = unpickler.load()
+            f.close()
 
         precs = ch.asarray([np.linalg.inv(cov) for cov in gmm['covars']])
         chols = ch.asarray([np.linalg.cholesky(prec) for prec in precs])

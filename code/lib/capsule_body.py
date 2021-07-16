@@ -14,7 +14,7 @@ import numpy as np
 import chumpy as ch
 import scipy.sparse as sp
 
-from capsule_ch import Capsule
+from lib.capsule_ch import Capsule
 
 joint2name = ['pelvis', 'leftThigh', 'rightThigh', 'spine', 'leftCalf',
               'rightCalf', 'spine1', 'leftFoot', 'rightFoot', 'spine2', 'neck',
@@ -178,7 +178,7 @@ def set_sphere_centers(capsule, floor=True):
 
     if n_spheres >= 1:
         step = capsule.length.r / (n_spheres + 1)
-        for i in xrange(n_spheres):
+        for i in range(n_spheres):
             centers.append(capsule.axis[0].r + (capsule.axis[
                 1].r - capsule.axis[0].r) * step * (i + 1) / capsule.length.r)
 
@@ -220,7 +220,7 @@ def get_capsule_bweights(vs):
 def get_sphere_bweights(sph_vs, capsules):
     rows = np.arange(sph_vs.shape[0])
     cols = []
-    for cps, w in zip(capsules, range(10) + range(12, 22)):
+    for cps, w in zip(capsules, list(range(10)) + list(range(12, 22))):
         cols.append([w] * len(cps.centers))
     cols = np.hstack(cols)
     data = np.ones(sph_vs.shape[0])

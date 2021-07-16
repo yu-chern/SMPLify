@@ -94,7 +94,7 @@ class Capsule(object):
 
         if n_spheres >= 1:
             step = self.length.r / (n_spheres + 1)
-            for i in xrange(n_spheres):
+            for i in range(n_spheres):
                 centers.append(self.axis[0].r + (self.axis[1].r - self.axis[
                     0].r) * step * (i + 1) / self.length.r)
 
