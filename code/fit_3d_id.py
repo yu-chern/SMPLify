@@ -489,12 +489,13 @@ def run_single_fit(img,
               'pose': sv.pose.r,
               'betas': sv.betas.r}
 
-    return params, images, verts
+    return params, images
 
 
 def main(base_dir,
          out_dir,
-         use_interpenetration=True,
+         use_interpenetration=False,
+         img_id=0,
          n_betas=10,
          flength=5000.,
          pix_thsh=25.,
@@ -504,6 +505,7 @@ def main(base_dir,
     :param base_dir: folder containing LSP images and data
     :param out_dir: output folder
     :param use_interpenetration: boolean, if True enables the interpenetration term
+    :param img_id: deal with the image c.t. the img_id
     :param n_betas: number of shape coefficients considered during optimization
     :param flength: camera focal length (an estimate)
     :param pix_thsh: threshold (in pixel), if the distance between shoulder joints in 2D
@@ -539,72 +541,85 @@ def main(base_dir,
         model = load_model(MODEL_NEUTRAL_PATH)
         if use_interpenetration:
             sph_regs = np.load(SPH_REGS_NEUTRAL_PATH)
-
     # Load joints
     est = np.load(join(data_dir, 'est_joints.npz'))['est_joints']
-
     # Load images
     img_paths = sorted(glob(join(img_dir, '*[0-9].jpg')))
     for ind, img_path in enumerate(img_paths):
-        out_path = '%s/%04d.pkl' % (out_dir, ind)
-        if not exists(out_path):
-            _LOGGER.info('Fitting 3D body on `%s` (saving to `%s`).', img_path,
-                         out_path)
-            img = cv2.imread(img_path)
-            if img.ndim == 2:
-                _LOGGER.warn("The image is grayscale!")
-                img = np.dstack((img, img, img))
+        #################################################
+        if ind in img_id:
+            print("Processing image: ",ind+1)
+        #################################################
+            out_path = '%s/%04d.pkl' % (out_dir, ind)
+            if not exists(out_path):
+                _LOGGER.info('Fitting 3D body on `%s` (saving to `%s`).', img_path,
+                            out_path)
+                img = cv2.imread(img_path)
+                if img.ndim == 2:
+                    _LOGGER.warn("The image is grayscale!")
+                    img = np.dstack((img, img, img))
 
-            joints = est[:2, :, ind].T
-            conf = est[2, :, ind]
+                joints = est[:2, :, ind].T
+                conf = est[2, :, ind]
 
-            if not use_neutral:
-                gender = 'male' if int(genders[ind]) == 0 else 'female'
-                if gender == 'female':
-                    model = model_female
-                    if use_interpenetration:
-                        sph_regs = sph_regs_female
-                elif gender == 'male':
-                    model = model_male
-                    if use_interpenetration:
-                        sph_regs = sph_regs_male
+                if not use_neutral:
+                    gender = 'male' if int(genders[ind]) == 0 else 'female'
+                    if gender == 'female':
+                        model = model_female
+                        if use_interpenetration:
+                            sph_regs = sph_regs_female
+                    elif gender == 'male':
+                        model = model_male
+                        if use_interpenetration:
+                            sph_regs = sph_regs_male
 
-            params, vis, verts = run_single_fit(
-                img,
-                joints,
-                conf,
-                model,
-                regs=sph_regs,
-                n_betas=n_betas,
-                flength=flength,
-                pix_thsh=pix_thsh,
-                scale_factor=2,
-                viz=viz,
-                do_degrees=do_degrees)
-            if viz:
-                import matplotlib.pyplot as plt
-                plt.ion()
-                plt.show()
-                plt.subplot(121)
-                plt.imshow(img[:, :, ::-1])
+                params, vis = run_single_fit(
+                    img,
+                    joints,
+                    conf,
+                    model,
+                    regs=sph_regs,
+                    n_betas=n_betas,
+                    flength=flength,
+                    pix_thsh=pix_thsh,
+                    scale_factor=2,
+                    viz=viz,
+                    do_degrees=do_degrees)
+                if viz:
+                    import matplotlib.pyplot as plt
+                    plt.ion()
+                    plt.show()
+                    plt.subplot(121)
+                    plt.imshow(img[:, :, ::-1])
+                    if do_degrees is not None:
+                        for di, deg in enumerate(do_degrees):
+                            plt.subplot(122)
+                            plt.cla()
+                            plt.imshow(vis[di])
+                            plt.draw()
+                            plt.title('%d deg' % deg)
+                            plt.pause(1)
+                    input('Press any key to continue...')
+
+                with open(out_path, 'wb') as outf:
+                    pickle.dump(params, outf)
+                
+                # Saves the vertices (point cloud) as .off file format
+                # np.savetxt(out_dir+str(ind)+".off",verts,fmt="%.4f %.4f %.4f",delimiter=" ",header="OFF\n6890 0 0")
+                # Saves the fitted 3D SMPL model to an .obj file
+                m = model.copy()
+                m.pose[:] = params['pose']
+                m.betas[:] = params['betas']
+                outmesh_path = out_dir+str(ind)+".obj"
+                with open( outmesh_path, 'w') as fp:
+                    for v in m.r:
+                        fp.write( 'v %f %f %f\n' % ( v[0], v[1], v[2]) )
+
+                    for f in m.f+1: # Faces are 1-based, not 0-based in obj files
+                        fp.write( 'f %d %d %d\n' %  (f[0], f[1], f[2]) )
+                                # This only saves the first rendering.
                 if do_degrees is not None:
-                    for di, deg in enumerate(do_degrees):
-                        plt.subplot(122)
-                        plt.cla()
-                        plt.imshow(vis[di])
-                        plt.draw()
-                        plt.title('%d deg' % deg)
-                        plt.pause(1)
-                input('Press any key to continue...')
-
-            with open(out_path, 'wb') as outf:
-                pickle.dump(params, outf)
-            
-            # Saves the vertices (point cloud) as .off file format
-            np.savetxt(out_dir+str(ind)+".off",verts,fmt="%.4f %.4f %.4f",delimiter=" ",header="OFF\n6890 0 0")
-            # This only saves the first rendering.
-            if do_degrees is not None:
-                cv2.imwrite(out_path.replace('.pkl', '.png'), vis[0])
+                    cv2.imwrite(out_path.replace('.pkl', '.png'), vis[0])
 
 
 if __name__ == '__main__':
@@ -622,6 +637,11 @@ if __name__ == '__main__':
         default='../tmp/smplify_lsp/',
         type=str,
         help='Where results will be saved, default is ../tmp/smplify_lsp')
+    parser.add_argument(
+        '--img_id',
+        default=[159],
+        type=list,
+        help="Specify the ID of image to process.")
     parser.add_argument(
         '--no_interpenetration',
         default=True,
@@ -683,5 +703,5 @@ if __name__ == '__main__':
         SPH_REGS_MALE_PATH = join(MODEL_DIR,
                                   'regressors_locked_normalized_male.npz')
 
-    main(args.base_dir, args.out_dir, use_interpenetration, args.n_betas,
+    main(args.base_dir, args.out_dir, use_interpenetration,args.img_id, args.n_betas,
          args.flength, args.side_view_thsh, args.gender_neutral, args.viz)
